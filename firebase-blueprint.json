@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "Artist": {
+      "title": "Artist",
+      "description": "A tattoo artist or shop in the CRM pipeline",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "shopName": { "type": "string" },
+        "ig_handle": { "type": "string" },
+        "address": { "type": "string" },
+        "location_tag": { "type": "string" },
+        "stage": { "type": "string", "enum": ["outreach", "engaged", "customers", "dormant"] },
+        "followers": { "type": "number" },
+        "activityLevel": { "type": "string" },
+        "style": { "type": "string" },
+        "dnaTags": { "type": "array", "items": { "type": "string" } },
+        "visualDNA": { "type": "object" },
+        "heatScore": { "type": "number" },
+        "similarityScore": { "type": "number" },
+        "orderCount": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "lastOrderDate": { "type": "string" },
+        "lastInteractionDate": { "type": "string" },
+        "uid": { "type": "string", "description": "Owner of the record" },
+        "account_id": { "type": "string" }
+      },
+      "required": ["id", "stage", "uid"]
+    },
+    "Interaction": {
+      "title": "Interaction",
+      "description": "A recorded interaction with an artist",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "artistId": { "type": "string" },
+        "type": { "type": "string", "enum": ["like", "comment", "follow", "story_view", "dm_reply"] },
+        "weight": { "type": "number" },
+        "timestamp": { "type": "string" },
+        "content": { "type": "string" },
+        "uid": { "type": "string" }
+      },
+      "required": ["id", "artistId", "type", "uid"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A purchase record from an artist",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "artistId": { "type": "string" },
+        "productName": { "type": "string" },
+        "amount": { "type": "number" },
+        "orderDate": { "type": "string" },
+        "uid": { "type": "string" }
+      },
+      "required": ["id", "artistId", "uid"]
+    }
+  },
+  "firestore": {
+    "/artists/{artistId}": {
+      "schema": "Artist",
+      "description": "Collection of tattoo artists and shops"
+    },
+    "/interactions/{interactionId}": {
+      "schema": "Interaction",
+      "description": "Log of social interactions"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Log of customer orders"
+    }
+  }
+}

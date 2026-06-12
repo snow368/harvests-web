@@ -1,0 +1,11 @@
+node_modules/
+build/
+dist/
+.env
+.env.local
+*.log
+*.db
+*.db-shm
+*.db-wal
+Thumbs.db
+.DS_Store
