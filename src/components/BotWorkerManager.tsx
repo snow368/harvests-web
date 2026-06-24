@@ -655,6 +655,9 @@ export default function BotWorkerManager() {
           );
         })}
       </div>
+
+      {/* ⚙️ Bot 配置管理 */}
+      <BotConfigSection />
     </div>
   );
 
@@ -683,4 +686,164 @@ export default function BotWorkerManager() {
   function updateConfig(fnId: string, key: string, value: string) {
     setConfigs(prev => ({ ...prev, [fnId]: { ...prev[fnId], [key]: value } }));
   }
+}
+
+/* ═══════════════════════════════════════════════
+   Bot 配置管理面板
+   ═══════════════════════════════════════════════ */
+const API_BASE = 'https://harvests-api.inkflowapp.workers.dev';
+
+function BotConfigSection() {
+  const [bots, setBots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<Record<string, any>>({});
+
+  const fetchBots = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/api/automation/bot-config`);
+      const data = await res.json();
+      setBots(data.items || []);
+    } catch { setBots([]); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchBots(); }, [fetchBots]);
+
+  const updateBot = async (botId: string, updates: any) => {
+    try {
+      const existing = editing[botId] || bots.find(b => b.bot_id === botId) || {};
+      await fetch(`${API_BASE}/api/automation/bot-config/${botId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...existing, ...updates }),
+      });
+      toast.success(`✅ ${botId} 已更新`);
+      fetchBots();
+    } catch { toast.error('更新失败'); }
+  };
+
+  const toggleBot = async (botId: string) => {
+    try {
+      await fetch(`${API_BASE}/api/automation/bot-config/${botId}/toggle`, { method: 'PATCH' });
+      toast.success('已切换');
+      fetchBots();
+    } catch { toast.error('切换失败'); }
+  };
+
+  const actionOptions = [
+    { value: '["browse"]', label: '仅浏览' },
+    { value: '["browse","like"]', label: '浏览+点赞' },
+    { value: '["browse","like","comment"]', label: '+评论' },
+    { value: '["browse","like","comment","follow"]', label: '+关注' },
+    { value: '["browse","like","comment","follow","dm"]', label: '全部（含DM）' },
+  ];
+
+  return (
+    <div className="bg-[#111] border border-zinc-800/50 rounded-[2rem] p-6 mt-6">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <Settings className="w-5 h-5 text-zinc-400" />
+          <h4 className="font-black text-sm text-white">⚙️ Bot 配置管理</h4>
+          {bots.length > 0 && <span className="text-[10px] font-bold text-zinc-500">{bots.length} bots</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={fetchBots} className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-[10px] font-bold rounded-xl transition-colors">
+            <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} /> 刷新
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
+        </div>
+      ) : bots.length === 0 ? (
+        <div className="py-10 text-center">
+          <p className="text-xs text-zinc-600 font-medium mb-3">暂无 Bot 配置</p>
+          <a href={`${API_BASE}/admin`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-[10px] font-bold rounded-xl transition-colors">
+            <Settings className="w-3 h-3" /> 打开配置面板
+          </a>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {bots.map(bot => {
+            const isActive = bot.active === 1;
+            const isOnline = bot.status === 'online' || bot.status === 'busy';
+            const actions = (() => { try { return JSON.parse(bot.allowed_actions || '["browse"]'); } catch { return ['browse']; } })();
+            const actionLabel = actionOptions.find(o => o.value === JSON.stringify(actions))?.label || actions.join(', ');
+
+            return (
+              <div key={bot.bot_id} className={cn("p-4 bg-zinc-900/50 border rounded-xl transition-colors", isActive ? "border-zinc-800" : "border-zinc-800/30 opacity-60")}>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className={cn("w-2 h-2 rounded-full", isOnline ? "bg-green-500" : "bg-zinc-600")} />
+                    <span className="text-sm font-bold text-white">{bot.display_name || bot.bot_id}</span>
+                    <span className="text-[10px] text-zinc-500">{bot.bot_id}</span>
+                    {bot.ig_username && <span className="text-[10px] text-zinc-600">IG: {bot.ig_username}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full", isActive ? "bg-green-500/10 text-green-400" : "bg-zinc-800 text-zinc-500")}>
+                      {isActive ? '运行中' : '已停用'}
+                    </span>
+                    <button onClick={() => toggleBot(bot.bot_id)} className={cn("text-[10px] px-2 py-1 rounded-lg font-bold transition-colors", isActive ? "bg-red-500/10 text-red-400 hover:bg-red-500/20" : "bg-green-500/10 text-green-400 hover:bg-green-500/20")}>
+                      {isActive ? '停用' : '启用'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="flex items-center gap-4 mb-3 text-[10px]">
+                  <span className="text-zinc-500">今日: <b className="text-zinc-300">{bot.tasks_today || 0}</b></span>
+                  <span className="text-green-500">成功: {bot.tasks_success || 0}</span>
+                  <span className="text-red-500">失败: {bot.tasks_failed || 0}</span>
+                  <span className="text-zinc-600">动作: {actionLabel}</span>
+                  {bot.last_heartbeat_at && <span className="text-zinc-600">心跳: {new Date(bot.last_heartbeat_at).toLocaleTimeString()}</span>}
+                </div>
+
+                {/* Edit inline */}
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-wider">每日限额</label>
+                    <input type="number" defaultValue={bot.daily_task_limit} onBlur={e => updateBot(bot.bot_id, { daily_task_limit: +e.target.value })}
+                      className="mt-1 w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-[11px] text-zinc-300 font-medium focus:outline-none focus:border-zinc-500" />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-wider">动作</label>
+                    <select defaultValue={JSON.stringify(actions)} onChange={e => updateBot(bot.bot_id, { allowed_actions: JSON.parse(e.target.value) })}
+                      className="mt-1 w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-[11px] text-zinc-300 font-medium focus:outline-none focus:border-zinc-500">
+                      {actionOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-wider">速度</label>
+                    <select defaultValue={bot.speed_factor || 1} onChange={e => updateBot(bot.bot_id, { speed_factor: +e.target.value })}
+                      className="mt-1 w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-[11px] text-zinc-300 font-medium focus:outline-none focus:border-zinc-500">
+                      <option value="0.5">极慢 0.5x</option>
+                      <option value="1">正常 1x</option>
+                      <option value="1.5">快速 1.5x</option>
+                      <option value="2">极速 2x</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-wider">IG 账号</label>
+                    <input type="text" defaultValue={bot.ig_username || ''} placeholder="@username"
+                      onBlur={e => e.target.value && updateBot(bot.bot_id, { ig_username: e.target.value })}
+                      className="mt-1 w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-[11px] text-zinc-300 font-medium focus:outline-none focus:border-zinc-500" />
+                  </div>
+                </div>
+
+                {bot.last_error && (
+                  <div className="mt-2 text-[10px] text-red-500 bg-red-500/5 px-2 py-1 rounded-lg">
+                    错误: {bot.last_error}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
