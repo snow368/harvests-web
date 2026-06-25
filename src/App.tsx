@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   MessageSquare, 
@@ -300,7 +300,28 @@ const MainContent = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    const validTabs: Tab[] = ['dashboard','outreach','analyzer','training','crm','inventory','orders','tasks','automation','botworkers','settings','publish','inkflow-outreach'];
+    return validTabs.includes(hash as Tab) ? (hash as Tab) : 'dashboard';
+  });
+
+  useEffect(() => {
+    const hash = activeTab === 'dashboard' ? '' : activeTab;
+    if (window.location.hash.replace(/^#\/?/, '') !== hash) {
+      window.history.replaceState(null, '', `#/${hash}`);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      const validTabs: Tab[] = ['dashboard','outreach','analyzer','training','crm','inventory','orders','tasks','automation','botworkers','settings','publish','inkflow-outreach'];
+      if (validTabs.includes(hash as Tab)) setActiveTab(hash as Tab);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   return (
     <CRMProvider>
