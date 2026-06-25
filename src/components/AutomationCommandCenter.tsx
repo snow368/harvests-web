@@ -28,6 +28,7 @@ import { cn } from '../lib/utils';
 import { useCRM } from '../contexts/CRMContext';
 import { InstagramAccount, TaskAssignment } from '../types/crm';
 import { toast } from 'sonner';
+import DataDashboard from './DataDashboard';
 
 type BotTaskType = 'ig_outreach' | 'reddit_intel' | 'supply_analysis';
 type SupplyAccountType = 'supply_brand' | 'supply_distributor';
@@ -649,6 +650,9 @@ export default function AutomationCommandCenter() {
           </div>
         </div>
       </div>
+
+      {/* ─── 数据看板 ─── */}
+      <DataDashboard />
     </div>
   );
 }
