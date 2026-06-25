@@ -4384,6 +4384,15 @@ async function startServer() {
           now
         );
 
+      // 同步到云 API → Neon
+      try {
+        fetch('https://harvests-api.inkflowapp.workers.dev/api/automation/observations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ botId, artistHandle, mode }),
+        }).catch(() => {});
+      } catch {}
+
       // Store relationship graph edges
       const relationships = req.body?.relationships;
       if (relationships && typeof relationships.sourceIgUserId === 'string') {
@@ -9121,6 +9130,15 @@ loadQueue('pending');
       app.get('*', (req, res) => {
         res.sendFile(path.join(distPath, 'index.html'));
       });
+    }
+
+    // ═══ Backlink Automation API ═══
+    try {
+      const { default: backlinkRouter } = await import('./src/lib/backlink-api.ts');
+      app.use('/api/backlinks', backlinkRouter);
+      console.log('✅ Backlink Automation API mounted at /api/backlinks');
+    } catch (e: any) {
+      console.warn('⚠️ Backlink Automation API not loaded:', e.message);
     }
 
     const PORT = 3000;

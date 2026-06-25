@@ -20,7 +20,8 @@ import {
   Box,
   ListTodo,
   Bot,
-  Calendar
+  Calendar,
+  Link
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
@@ -43,8 +44,9 @@ import OrderManager from './components/OrderManager';
 import BotWorkerManager from './components/BotWorkerManager';
 import PublishCalendar from './components/PublishCalendar';
 import InkFlowOutreach from './components/InkFlowOutreach';
+import BacklinkManager from './components/BacklinkManager';
 
-type Tab = 'dashboard' | 'outreach' | 'analyzer' | 'training' | 'crm' | 'inventory' | 'orders' | 'tasks' | 'automation' | 'botworkers' | 'settings' | 'publish' | 'inkflow-outreach';
+type Tab = 'dashboard' | 'outreach' | 'analyzer' | 'training' | 'crm' | 'inventory' | 'orders' | 'tasks' | 'automation' | 'botworkers' | 'settings' | 'publish' | 'inkflow-outreach' | 'backlinks';
 
 const Sidebar = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab: (tab: Tab) => void }) => {
   const { artists, user, logout } = useCRM();
@@ -71,7 +73,8 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab: (t
   // InkFlow outreach — only visible to snow368@gmail.com
   const isSnow368 = user?.email === 'snow368@gmail.com';
   const inkflowTab = { id: 'inkflow-outreach', label: 'InkFlow 获客', icon: Target };
-  const allTabs = [...tabs, inkflowTab];
+  const backlinksTab = { id: 'backlinks', label: '外链管理', icon: Link };
+  const allTabs = [...tabs, inkflowTab, backlinksTab];
 
   const renderTab = (tab: typeof tabs[0]) => {
     const Icon = tab.icon;
@@ -144,6 +147,7 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab: (t
             <div className="space-y-1">
               <p className="px-4 text-[10px] font-black text-rose-600/50 uppercase tracking-widest mb-2">Snow Only</p>
               {renderTab(inkflowTab)}
+              {renderTab(backlinksTab)}
             </div>
           )}
         </div>
@@ -223,7 +227,8 @@ const MainContent = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab
     botworkers: 'Bot Workers',
     settings: 'Settings',
     publish: 'Publish Calendar',
-    'inkflow-outreach': 'InkFlow 获客'
+    'inkflow-outreach': 'InkFlow 获客',
+    backlinks: '外链管理'
   };
 
   const descriptions: Record<Tab, string> = {
@@ -238,7 +243,8 @@ const MainContent = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab
     botworkers: "Start, stop, and manage bot worker processes...",
     settings: "Configure API keys and automation safety settings.",
     publish: "Schedule and publish content to social platforms.",
-    'inkflow-outreach': "Shared resource pool for InkFlow customer outreach. Only visible to dev users."
+    'inkflow-outreach': "Shared resource pool for InkFlow customer outreach. Only visible to dev users.",
+    backlinks: "多项目外链自动化系统 — 提交状态、资产追踪、一键执行"
   };
 
   return (
@@ -293,6 +299,7 @@ const MainContent = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab
           {activeTab === 'publish' && <PublishCalendar />}
           {activeTab === 'settings' && <AutomationSettings />}
           {activeTab === 'inkflow-outreach' && <InkFlowOutreach />}
+          {activeTab === 'backlinks' && <BacklinkManager />}
         </motion.div>
       </AnimatePresence>
     </main>
@@ -302,7 +309,7 @@ const MainContent = ({ activeTab, setActiveTab }: { activeTab: Tab, setActiveTab
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const hash = window.location.hash.replace(/^#\/?/, '');
-    const validTabs: Tab[] = ['dashboard','outreach','analyzer','training','crm','inventory','orders','tasks','automation','botworkers','settings','publish','inkflow-outreach'];
+    const validTabs: Tab[] = ['dashboard','outreach','analyzer','training','crm','inventory','orders','tasks','automation','botworkers','settings','publish','inkflow-outreach','backlinks'];
     return validTabs.includes(hash as Tab) ? (hash as Tab) : 'dashboard';
   });
 
@@ -316,7 +323,7 @@ export default function App() {
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash.replace(/^#\/?/, '');
-      const validTabs: Tab[] = ['dashboard','outreach','analyzer','training','crm','inventory','orders','tasks','automation','botworkers','settings','publish','inkflow-outreach'];
+      const validTabs: Tab[] = ['dashboard','outreach','analyzer','training','crm','inventory','orders','tasks','automation','botworkers','settings','publish','inkflow-outreach','backlinks'];
       if (validTabs.includes(hash as Tab)) setActiveTab(hash as Tab);
     };
     window.addEventListener('hashchange', onHashChange);
