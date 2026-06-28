@@ -4,7 +4,7 @@ import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 import { Loader2, Search, Database, CheckSquare, Square, Filter, ChevronLeft, ChevronRight, PlusCircle, ListTodo, Clock, CheckCircle, XCircle } from 'lucide-react';
 
-const API = 'https://harvests-api.inkflowapp.workers.dev/api/automation';
+const API = 'https://harvests-cloud-api.inkflowapp.workers.dev/api/automation';
 
 export default function DataDashboard() {
   const [artists, setArtists] = useState<any[]>([]);

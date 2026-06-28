@@ -691,7 +691,7 @@ export default function BotWorkerManager() {
 /* ═══════════════════════════════════════════════
    Bot 配置管理面板
    ═══════════════════════════════════════════════ */
-const API_BASE = 'https://harvests-api.inkflowapp.workers.dev';
+const API_BASE = 'https://harvests-cloud-api.inkflowapp.workers.dev';
 
 function BotConfigSection() {
   const [bots, setBots] = useState<any[]>([]);
