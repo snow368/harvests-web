@@ -9034,39 +9034,102 @@ loadQueue('pending');
     const SHOPIFY_STORE = process.env.SHOPIFY_STORE || 'dptattoo';
 
 
+    // 从 Shopify Link 响应头解析下一页游标 URL (2024-04 API 用游标分页, 旧 &page=N 已失效)
+    function getNextLink(linkHeader: string | null): string | null {
+      if (!linkHeader) return null;
+      for (const part of linkHeader.split(',')) {
+        const m = part.match(/<([^>]+)>;\s*rel="next"/);
+        if (m) return m[1];
+      }
+      return null;
+    }
+
     // POST /api/fulfillment/shopify/sync — 拉取 Shopify 订单入库
+    // mode:
+    //   'incremental'(默认) — 按 updated_at_min(默认30天) 抓取。新订单 + 近期被改/发货的老单都会被抓到
+    //                         (例: 一周前下单、今天才发货的 XXXX 单, Shopify 发货会刷新 updated_at → 今天命中)
+    //   'full'             — 按 created_at_min 一次性回溯全部历史老单(如 4731-4737), 用 since 可指定起点
+    // since: 可选 YYYY-MM-DD, 覆盖默认时间窗口
     app.post('/api/fulfillment/shopify/sync', async (req, res) => {
       try {
         const config = deepScanDb.prepare("SELECT * FROM carrier_configs WHERE carrier='shopify'").get();
         if (!config) return res.status(400).json({ error: 'Shopify not configured, run OAuth first' });
         const token = config.api_key;
         const baseUrl = config.api_base_url || 'https://dptattoo.myshopify.com/admin/api/2024-04';
-        const since = req.body?.since || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-        let page = 1; let synced = 0; let hasMore = true;
-        while (hasMore) {
-          const r = await fetch(baseUrl + '/orders.json?limit=50&created_at_min=' + since + '&page=' + page, {
-            headers: { 'X-Shopify-Access-Token': token }
-          });
+        const mode: string = req.body?.mode || 'incremental';
+        const since: string | undefined = req.body?.since;
+        const now = Date.now();
+        const defaultWindow = new Date(now - 30 * 86400000).toISOString().slice(0, 10);
+
+        // 决定时间窗口查询参数
+        const timeParam = mode === 'full'
+          ? 'created_at_min=' + (since || '2020-01-01')
+          : 'updated_at_min=' + (since || defaultWindow);
+
+        // 复用预编译语句
+        const upsertOrder = deepScanDb.prepare(`
+          INSERT INTO orders (order_number, source, status, customer_name, customer_email, country, state, city, zip_code, address, phone, currency, notes, created_at, updated_at)
+          VALUES (@order_number, 'shopify', 'pending', @customer_name, @customer_email, @country, @state, @city, @zip_code, @address, @phone, @currency, @notes, @created_at, @updated_at)
+          ON CONFLICT(order_number) DO UPDATE SET
+            customer_name=excluded.customer_name,
+            customer_email=excluded.customer_email,
+            country=excluded.country,
+            state=excluded.state,
+            city=excluded.city,
+            zip_code=excluded.zip_code,
+            address=excluded.address,
+            phone=excluded.phone,
+            currency=excluded.currency,
+            notes=excluded.notes,
+            updated_at=excluded.updated_at
+        `);
+        const getOrderId = deepScanDb.prepare('SELECT id FROM orders WHERE order_number=?');
+        const deleteItems = deepScanDb.prepare('DELETE FROM order_items WHERE order_id=?');
+        const insertItem = deepScanDb.prepare('INSERT INTO order_items (order_id, sku, product_name, quantity, unit_price) VALUES (?, ?, ?, ?, ?)');
+
+        let inserted = 0, updatedOrders = 0, guard = 0;
+        let pageUrl: string | null = baseUrl + '/orders.json?limit=50&' + timeParam;
+        while (pageUrl && guard < 50) {
+          guard++;
+          const r = await fetch(pageUrl, { headers: { 'X-Shopify-Access-Token': token } });
+          if (!r.ok) {
+            const errText = await r.text();
+            return res.status(502).json({ error: 'Shopify API ' + r.status + ': ' + errText.slice(0, 200) });
+          }
           const data = await r.json();
           const orders = data.orders || [];
-          if (orders.length === 0) { hasMore = false; break; }
-          const insertOrder = deepScanDb.prepare("INSERT OR IGNORE INTO orders (order_number, source, status, customer_name, customer_email, country, state, city, zip_code, address, phone, currency, notes, created_at, updated_at) VALUES (?, 'shopify', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-          const insertItem = deepScanDb.prepare('INSERT OR IGNORE INTO order_items (order_id, sku, product_name, quantity, unit_price) VALUES (?, ?, ?, ?, ?)');
           for (const o of orders) {
             const addr = o.shipping_address || o.customer?.default_address || {};
-            const now = Date.now();
-            const r2 = insertOrder.run(String(o.order_number), o.shipping_address?.name || o.customer?.name || '', o.email || '', addr.country_code || addr.country || '', addr.province || '', addr.city || '', addr.zip || '', addr.address1 || '', addr.phone || '', o.currency || 'USD', o.note || '', new Date(o.created_at).getTime() || now, now);
-            if (r2.changes > 0) {
-              const orderId = r2.lastInsertRowid;
+            const params = {
+              order_number: String(o.order_number),
+              customer_name: o.shipping_address?.name || o.customer?.name || '',
+              customer_email: o.email || '',
+              country: addr.country_code || addr.country || '',
+              state: addr.province || '',
+              city: addr.city || '',
+              zip_code: addr.zip || '',
+              address: addr.address1 || '',
+              phone: addr.phone || '',
+              currency: o.currency || 'USD',
+              notes: o.note || '',
+              created_at: new Date(o.created_at).getTime() || now,
+              updated_at: new Date(o.updated_at).getTime() || now,
+            };
+            const existed = getOrderId.get(params.order_number);
+            upsertOrder.run(params);
+            const oid = (getOrderId.get(params.order_number) as any)?.id;
+            if (oid) {
+              // 刷新商品行(纯 Shopify 数据, 无本地履约状态, 删除后重插安全)
+              deleteItems.run(oid);
               for (const item of (o.line_items || [])) {
-                insertItem.run(orderId, item.sku || '', item.name || '', item.quantity || 1, Number(item.price) || 0);
+                insertItem.run(oid, item.sku || '', item.name || '', item.quantity || 1, Number(item.price) || 0);
               }
-              synced++;
             }
+            if (existed) updatedOrders++; else inserted++;
           }
-          page++;
+          pageUrl = getNextLink(r.headers.get('Link'));
         }
-        res.json({ ok: true, synced: synced, message: 'Synced ' + String(synced) + ' orders' });
+        res.json({ ok: true, inserted, updated: updatedOrders, mode, message: `Synced ${inserted} new, updated ${updatedOrders} orders (mode=${mode})` });
       } catch (e) {
         res.status(500).json({ error: e.message });
       }

@@ -41,13 +41,18 @@ export default function OrderManager() {
     setLoading(false);
   };
 
-  const syncOrders = async () => {
+  const syncOrders = async (mode: 'incremental' | 'full' = 'incremental') => {
     setSyncing(true);
     setMessage('');
     try {
-      const r = await fetch('/api/fulfillment/shopify/sync', { method: 'POST' });
+      const r = await fetch('/api/fulfillment/shopify/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
       const d = await r.json();
-      setMessage(`Synced ${d.synced} orders`);
+      if (!d.ok) setMessage('Sync failed: ' + (d.error || 'unknown'));
+      else setMessage(`Synced ${d.inserted} new, updated ${d.updated} orders (${mode})`);
       fetchOrders();
     } catch { setMessage('Sync failed'); }
     setSyncing(false);
@@ -202,10 +207,17 @@ export default function OrderManager() {
     <div style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <h2 style={{ margin: 0 }}>Orders</h2>
-        <button onClick={syncOrders} disabled={syncing}
-          style={{ padding: '8px 16px', cursor: 'pointer', borderRadius: 6, border: '1px solid #ccc', background: syncing ? '#eee' : '#fff' }}>
-          {syncing ? 'Syncing...' : '🔄 Sync Shopify'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => syncOrders('incremental')} disabled={syncing}
+            style={{ padding: '8px 16px', cursor: 'pointer', borderRadius: 6, border: '1px solid #ccc', background: syncing ? '#eee' : '#fff' }}>
+            {syncing ? 'Syncing...' : '🔄 Sync Shopify'}
+          </button>
+          <button onClick={() => syncOrders('full')} disabled={syncing}
+            title="一次性回溯全部历史老单(含已发货/迟备注), 按订单序号 upsert 刷新"
+            style={{ padding: '8px 16px', cursor: 'pointer', borderRadius: 6, border: '1px solid #ccc', background: syncing ? '#eee' : '#fff' }}>
+            📥 全量回溯
+          </button>
+        </div>
       </div>
       {message && <div style={{ marginBottom: 12, padding: 8, background: '#e8f5e9', borderRadius: 4 }}>{message}</div>}
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
