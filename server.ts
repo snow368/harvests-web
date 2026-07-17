@@ -14,15 +14,17 @@ import dotenv from 'dotenv';
 import { neon } from '@neondatabase/serverless';
 import { spawn } from 'child_process';
 
-// Simple wrapper for parse-order-notes
+// Reuse the robust order-note parser from the engine (single source of truth).
+// Handles brand line-prefix quantities (2Peach→2, 3 AES→3), expanded needle
+// suffixes (RM/M1/M2/MC/MT/MAG/FL/L/LL/SL), letter-first/space-sep/Chinese
+// formats, and x2/盒 multipliers. See harvests-engine/scripts/parse-order-notes.ts.
+import { parseOrderNote } from '../harvests-engine/scripts/parse-order-notes.ts';
 const parseNote = (note: string): any[] => {
   try {
-    const m = note.match(/\b(\d{3,4})(RL|RS|RG|RT|F|M)\b/gi);
-    const gifts: any[] = [];
-    if (m) m.forEach((x: string) => gifts.push({ type: 'needle', label: x.toUpperCase(), quantity: 1, estimatedBoxes: 1 }));
-    if (/小海报/i.test(note)) gifts.push({ type: 'poster', label: '小海报', quantity: 1 });
-    return gifts;
-  } catch { return []; }
+    return parseOrderNote(note);
+  } catch {
+    return [];
+  }
 };
 
 dotenv.config();
