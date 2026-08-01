@@ -19,9 +19,17 @@ import { spawn } from 'child_process';
 // suffixes (RM/M1/M2/MC/MT/MAG/FL/L/LL/SL), letter-first/space-sep/Chinese
 // formats, and x2/盒 multipliers. See harvests-engine/scripts/parse-order-notes.ts.
 import { parseOrderNote } from '../harvests-engine/scripts/parse-order-notes.ts';
-const parseNote = (note: string): any[] => {
+const parseNote = (note: string, items?: Array<{sku?: string}>): any[] => {
   try {
-    return parseOrderNote(note);
+    // 从 items 的 SKU 推断系列（如 CON-1007RL → CON）
+    const series = new Set<string>();
+    for (const item of items || []) {
+      const sku = (item.sku || '').toUpperCase();
+      const m = sku.match(/^(CON|COG|AES)[-_]/);
+      if (m) series.add(m[1]);
+    }
+    const defaultSeries = series.size === 1 ? [...series][0] : undefined;
+    return parseOrderNote(note, { defaultSeries });
   } catch {
     return [];
   }
@@ -8905,7 +8913,7 @@ loadQueue('pending');
       const order = deepScanDb.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
       if (!order) return res.status(404).json({ error: 'not found' });
       const items = deepScanDb.prepare('SELECT * FROM order_items WHERE order_id = ?').all(req.params.id);
-            (order as any).gifts = parseNote((order as any).notes || '');
+            (order as any).gifts = parseNote((order as any).notes || '', items);
       const shipments = deepScanDb.prepare('SELECT * FROM shipments WHERE order_id = ? ORDER BY created_at DESC').all(req.params.id);
       res.json({ ...order as any, items, shipments });
     });

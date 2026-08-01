@@ -13,12 +13,14 @@ export default function InventoryManager() {
   const [alerts, setAlerts] = useState<StockAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [showResetModal, setShowResetModal] = useState(false);
   const [scanMode, setScanMode] = useState<'inbound' | 'outbound' | null>(null);
   const [scanSku, setScanSku] = useState('');
   const [scanQty, setScanQty] = useState(1);
   const [scanCustomer, setScanCustomer] = useState('');
   const [scanNote, setScanNote] = useState('');
   const [scanBarcode, setScanBarcode] = useState('');
+  const [scanPackSource, setScanPackSource] = useState<'20pack' | '10pack'>('20pack');
 
   const loadAll = async () => {
     setLoading(true);
@@ -31,6 +33,20 @@ export default function InventoryManager() {
       setCustomers(c); setAlerts(a);
     } catch (e: any) { setMessage('Load failed: ' + e.message); }
     setLoading(false);
+  };
+
+  const resetStock = async () => {
+    try {
+      const res = await api.resetStock();
+      if (res.ok) {
+        setMessage(`✅ 已清零 ${res.updated ?? '?'} 个产品的库存。请立即用 CSV 重新盘点填数，否则明天 Shopify 订单会从 0 扣成负数！`);
+        setShowResetModal(false);
+        await loadAll();
+      } else {
+        setMessage('清零失败: ' + JSON.stringify(res));
+        setShowResetModal(false);
+      }
+    } catch (e: any) { setMessage('清零失败: ' + e.message); setShowResetModal(false); }
   };
 
   useEffect(() => { loadAll(); }, []);
@@ -60,12 +76,43 @@ export default function InventoryManager() {
           style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #27272a', background: '#18181b', color: '#a1a1aa', fontSize: 12, cursor: 'pointer' }}>
           {loading ? 'Loading...' : '⟳ Refresh'}
         </button>
+        <button onClick={() => setShowResetModal(true)}
+          style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #7f1d1d', background: '#3f0d0d', color: '#f87171', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+          ⚠ 清零库存
+        </button>
       </div>
 
       {message && (
         <div style={{ background: message.includes('failed') ? '#7f1d1d' : '#14532d', padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 13, color: message.includes('failed') ? '#fca5a5' : '#86efac' }}>
           {message}
           <button onClick={() => setMessage('')} style={{ marginLeft: 12, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>X</button>
+        </div>
+      )}
+
+      {showResetModal && (
+        <div onClick={() => setShowResetModal(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: '#18181b', border: '1px solid #7f1d1d', borderRadius: 12, padding: 24, maxWidth: 440 }}>
+            <h3 style={{ color: '#f87171', marginTop: 0, fontSize: 16 }}>⚠ 确认清零全部库存</h3>
+            <p style={{ fontSize: 13, color: '#d4d4d8', lineHeight: 1.6 }}>
+              这会把所有产品的 <b>current_stock 清零为 0</b>。出库/入库流水不受影响，但此操作<b>不可撤销</b>。
+            </p>
+            <p style={{ fontSize: 13, color: '#fbbf24', lineHeight: 1.6, background: '#422006', padding: 10, borderRadius: 8 }}>
+              ⚠ 清零后必须先用 CSV 重新盘点并填好真实库存，否则 Shopify 订单会从 0 开始扣，变成负数（超卖预警）。
+              系统已配置从 <b>2026-08-01</b> 起才扣减新订单（不回溯历史），但请在明天首单前完成盘点填数。
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={resetStock}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#dc2626', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+                确认清零
+              </button>
+              <button onClick={() => setShowResetModal(false)}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #27272a', background: 'transparent', color: '#a1a1aa', cursor: 'pointer' }}>
+                取消
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -129,6 +176,16 @@ export default function InventoryManager() {
                 </datalist>
               </div>
             )}
+            {scanMode === 'outbound' && scanCustomer && scanCustomer !== 'B2C' && (
+              <div>
+                <label style={{ fontSize: 11, color: '#71717a', display: 'block', marginBottom: 2 }}>包装来源</label>
+                <select value={scanPackSource} onChange={e => setScanPackSource(e.target.value as '20pack' | '10pack')}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid #27272a', background: '#0c0c0e', color: '#fafafa', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}>
+                  <option value="20pack">20只装（拆箱）</option>
+                  <option value="10pack">10只装（专用包装）</option>
+                </select>
+              </div>
+            )}
             <div style={{ gridColumn: 'span 2' }}>
               <label style={{ fontSize: 11, color: '#71717a', display: 'block', marginBottom: 2 }}>NOTE (optional)</label>
               <input value={scanNote} onChange={e => setScanNote(e.target.value)} placeholder="Any note..."
@@ -167,11 +224,12 @@ export default function InventoryManager() {
               await api.recordOutbound({
                 product_sku: scanSku, quantity: scanQty, channel: scanCustomer && scanCustomer !== 'B2C' ? 'B2B' : 'B2C',
                 customer_name: scanCustomer === 'B2C' ? '' : scanCustomer, shopify_order_id: '', outbound_date: now, note: scanNote,
+                pack_source: scanCustomer && scanCustomer !== 'B2C' ? scanPackSource : '20pack',
               });
             }
             setMessage(`${scanMode === 'inbound' ? 'Inbound' : 'Outbound'} recorded: ${scanSku} x${scanQty}`);
             setTimeout(() => setMessage(''), 3000);
-            setScanBarcode(''); setScanSku(''); setScanQty(1); setScanCustomer(''); setScanNote('');
+            setScanBarcode(''); setScanSku(''); setScanQty(1); setScanCustomer(''); setScanNote(''); setScanPackSource('20pack');
             loadAll();
           }} disabled={!scanSku || !scanQty}
             style={{ width: '100%', padding: 12, borderRadius: 8, border: 'none', background: !scanSku || !scanQty ? '#27272a' : scanMode === 'inbound' ? '#22c55e' : '#f59e0b', color: 'white', fontSize: 14, fontWeight: 700, cursor: !scanSku || !scanQty ? 'not-allowed' : 'pointer' }}>
@@ -393,11 +451,12 @@ function InboundTab({ inbounds, products, onRefresh }: { inbounds: InboundRecord
 function OutboundTab({ outbounds, products, customers, onRefresh }: { outbounds: OutboundRecord[]; products: Product[]; customers: Customer[]; onRefresh: () => void }) {
   const [sku, setSku] = useState(''); const [qty, setQty] = useState(0); const [channel, setChannel] = useState<'B2C' | 'B2B'>('B2C');
   const [customerName, setCustomerName] = useState(''); const [date, setDate] = useState(new Date().toISOString().slice(0, 10)); const [note, setNote] = useState('');
+  const [packSource, setPackSource] = useState<'20pack' | '10pack'>('20pack');
 
   const record = async () => {
     if (!sku || !qty) return;
-    await api.recordOutbound({ product_sku: sku, quantity: qty, channel, customer_name: customerName, shopify_order_id: '', outbound_date: date, note });
-    setSku(''); setQty(0); setNote('');
+    await api.recordOutbound({ product_sku: sku, quantity: qty, channel, customer_name: customerName, shopify_order_id: '', outbound_date: date, note, pack_source: packSource });
+    setSku(''); setQty(0); setNote(''); setPackSource('20pack');
     onRefresh();
   };
 
@@ -432,11 +491,21 @@ function OutboundTab({ outbounds, products, customers, onRefresh }: { outbounds:
             <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #27272a', background: '#0c0c0e', color: '#fafafa', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
           </div>
           {channel === 'B2B' && (
-            <div style={{ gridColumn: 'span 2' }}>
+            <div>
               <label style={{ fontSize: 11, color: '#71717a', display: 'block', marginBottom: 2 }}>CUSTOMER</label>
               <input list="cust-list" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Select or type customer"
                 style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #27272a', background: '#0c0c0e', color: '#fafafa', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
               <datalist id="cust-list">{customers.map(c => <option key={c.id} value={c.name} />)}</datalist>
+            </div>
+          )}
+          {channel === 'B2B' && (
+            <div>
+              <label style={{ fontSize: 11, color: '#71717a', display: 'block', marginBottom: 2 }}>包装来源</label>
+              <select value={packSource} onChange={e => setPackSource(e.target.value as '20pack' | '10pack')}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #27272a', background: '#0c0c0e', color: '#fafafa', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}>
+                <option value="20pack">20只装（拆箱）</option>
+                <option value="10pack">10只装（专用包装）</option>
+              </select>
             </div>
           )}
           <div style={{ gridColumn: 'span 2' }}>
@@ -475,6 +544,7 @@ function OutboundTab({ outbounds, products, customers, onRefresh }: { outbounds:
                   <td style={{ padding: '6px 8px' }}><code style={{ color: '#60a5fa' }}>{r.product_sku}</code></td>
                   <td style={{ padding: '6px 8px', fontWeight: 600 }}>-{r.quantity}</td>
                   <td style={{ padding: '6px 8px', color: '#a855f7' }}>{r.customer_name}</td>
+                  <td style={{ padding: '6px 8px', fontSize: 10, color: (r as any).pack_source === '10pack' ? '#22c55e' : '#71717a' }}>{(r as any).pack_source === '10pack' ? '10只装' : (r as any).pack_source === '20pack' ? '20只装' : ''}</td>
                 </tr>
               ))}</tbody>
             </table>

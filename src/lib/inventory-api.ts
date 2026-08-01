@@ -42,6 +42,7 @@ export interface OutboundRecord {
   outbound_date: string;
   note: string;
   created_at: number;
+  pack_source?: string;
 }
 
 export interface Customer {
@@ -78,6 +79,16 @@ export async function getStock(): Promise<Product[]> {
   const res = await fetch(`${API}/inventory/stock`);
   const data = await res.json();
   return data.items || [];
+}
+
+// 一键清零库存：仅将 current_stock 置 0（危险操作，需后端 confirm 强确认）
+export async function resetStock(): Promise<any> {
+  const res = await fetch(`${API}/inventory/stock/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirm: 'RESET-ALL-STOCK' }),
+  });
+  return res.json();
 }
 
 export async function getProductAlerts(): Promise<StockAlert[]> {
@@ -123,7 +134,7 @@ export async function recordInbound(data: { product_sku: string; quantity: numbe
   return res.json();
 }
 
-export async function recordOutbound(data: { product_sku: string; quantity: number; channel: string; customer_name: string; shopify_order_id: string; outbound_date: string; note: string }) {
+export async function recordOutbound(data: { product_sku: string; quantity: number; channel: string; customer_name: string; shopify_order_id: string; outbound_date: string; note: string; pack_source?: string }) {
   const res = await fetch(`${API}/inventory/outbound`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
